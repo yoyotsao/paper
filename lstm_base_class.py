@@ -30,10 +30,10 @@ from metaquantum import Optimization
 
 # Qiskit
 import qiskit
-import qiskit.providers.aer.noise as noise
+import qiskit_aer.noise as noise
 
 # Custom qiskit noise model
-from ibm_noise_models import thermal_noise_backend, combined_error_noisy_backend, combined_noise_backend_normdist
+from ibm_noise_models import combined_noise_backend_normdist #thermal_noise_backend, combined_error_noisy_backend, 
 
 
 # Dataset
@@ -48,8 +48,13 @@ from data.bessel_functions import get_bessel_data
 # from data.narma_generator import get_narma_data
 
 ##
-# dtype = torch.cuda.DoubleTensor if torch.cuda.is_available() else torch.DoubleTensor
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+if torch.cuda.is_available():
+	device = 'cuda' 
+	torch.set_default_tensor_type(torch.cuda.FloatTensor)
+	dtype = torch.cuda.DoubleTensor
+else:
+	device = 'cpu'
+	dtype = torch.DoubleTensor
 
 class VQLSTM(nn.Module):
 	def __init__(self, 
@@ -222,8 +227,6 @@ class VQLSTM(nn.Module):
 		return h_t, c_t, out
 
 	def forward(self, input_sequence_x, initial_h, initial_c):
-
-
 		h = initial_h.clone().detach()
 		c = initial_c.clone().detach()
 
@@ -233,7 +236,7 @@ class VQLSTM(nn.Module):
 		c_history = [] 
 
 		for item in input_sequence_x:
-			h, c, out = self._forward(item, h, c)
+			h, c, out = self._forward(item.to(device), h.to(device), c.to(device))
 			h_history.append(h)
 			c_history.append(c)
 			# print(h)
@@ -255,7 +258,6 @@ class VQLSTM(nn.Module):
 def main():
 
 	dtype = torch.DoubleTensor
-	device = 'cpu'
 
 
 	qdevice = "default.qubit" 

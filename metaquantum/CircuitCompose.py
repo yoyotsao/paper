@@ -23,8 +23,13 @@ import torch.multiprocessing as mp
 import pickle
 
 
-dtype = torch.cuda.DoubleTensor if torch.cuda.is_available() else torch.DoubleTensor
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+if torch.cuda.is_available():
+	device = 'cuda' 
+	torch.set_default_tensor_type(torch.cuda.FloatTensor)
+	dtype = torch.cuda.DoubleTensor
+else:
+	device = 'cpu'
+	dtype = torch.DoubleTensor
 
 
 class Stacked_VQC:

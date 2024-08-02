@@ -6,6 +6,7 @@ import torch, torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 # from torchvision import datasets, transforms
 # from torch.utils.data.dataset import Dataset  
 
@@ -13,8 +14,13 @@ import pickle
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-dtype = torch.cuda.DoubleTensor if torch.cuda.is_available() else torch.DoubleTensor
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+if torch.cuda.is_available():
+	device = 'cuda' 
+	torch.set_default_tensor_type(torch.cuda.FloatTensor)
+	dtype = torch.cuda.DoubleTensor
+else:
+	device = 'cpu'
+	dtype = torch.DoubleTensor
 
 from lstm_base_class import VQLSTM
 from lstm_federated_data_prepare import TimeSeriesDataSet
@@ -40,7 +46,7 @@ def MSEcost(VQC, X, Y, h_0, c_0, seq_len):
 
 	loss = nn.MSELoss()
 	output = loss(torch.stack([VQC.forward(vec.reshape(seq_len,1), h_0, c_0).reshape(1,) for vec in X]), Y.reshape(Y.shape[0],1))
-	print("LOSS AVG: ",output)
+	# print("LOSS AVG: ",output)
 	return output
 
 def train_epoch_full(opt, VQC, data, h_0, c_0, seq_len, batch_size):
@@ -66,7 +72,7 @@ def train_epoch_full(opt, VQC, data, h_0, c_0, seq_len, batch_size):
 
 def simulation_test(VQC, X, Y, h_0, c_0):
 
-	total_res = torch.stack([VQC.forward(vec.reshape(4,1), h_0, c_0).reshape(1,) for vec in X.type(dtype)]).detach().numpy()
+	total_res = torch.stack([VQC.forward(vec.reshape(4,1), h_0, c_0).reshape(1,) for vec in tqdm(X.type(dtype), ncols=100)]).detach().cpu().numpy()
 	ground_truth_y = Y.clone().detach()
 
 	return total_res, ground_truth_y
@@ -80,30 +86,29 @@ batch_size = 4
 
 
 x, y = get_bessel_data(data = "j2", num_points = 3000, seq_len = 4)
+# x=x[:160]
+# y=y[:160]
+num_for_train_set = int(0.67 * len(x) / num_clients) * num_clients
 
-num_for_train_set = int(0.67 * len(x))
 
 x_train = x[:num_for_train_set].type(dtype)
 y_train = y[:num_for_train_set].type(dtype)
 
 train_len = len(x_train)
-
-x_train = x_train[:2000]
-y_train = y_train[:2000]
 print("NUM TRAIN: ", len(x_train))
 
 train_data = TimeSeriesDataSet(x_train, y_train)
 
-train_data_split = torch.utils.data.random_split(train_data, [int(len(x_train) / num_clients) for _ in range(num_clients)])
+train_data_split = torch.utils.data.random_split(train_data, [int(len(x_train) / num_clients) for _ in range(num_clients)], generator=torch.Generator(device='cuda'))
 
-train_loader = [torch.utils.data.DataLoader(x, batch_size=batch_size, shuffle=True) for x in train_data_split]
+train_loader = [torch.utils.data.DataLoader(x, batch_size=batch_size, shuffle=True, generator=torch.Generator(device='cuda')) for x in train_data_split]
 
 x_test = x[num_for_train_set:].type(dtype)
 y_test = y[num_for_train_set:].type(dtype)
 
 test_data = TimeSeriesDataSet(x_test, y_test)
 
-test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=True, generator=torch.Generator(device='cuda'))
 
 
 
@@ -168,7 +173,7 @@ def plotting_simulation(exp_name, exp_index, file_name, train_len, simulation_re
 
 # Initialize the model
 qdevice = "default.qubit" 
-gpu_q = False
+gpu_q = True
 duplicate_time_of_input = 1
 
 lstm_input_size = 1
@@ -194,30 +199,27 @@ else:
 	dev = qml.device("default.qubit", wires = lstm_num_qubit)
 
 
-
-
-
 def client_update(client_model, optimizer, train_loader, epoch=5):
 	"""
 	This function updates/trains client model on client data
 	"""
 	client_model.train()
 	for e in range(epoch):
-		print("EPOCH: ",e)
+		# print("EPOCH: ",e)
 		c_0 = torch.zeros(lstm_internal_size,).type(dtype)
 		h_0 = torch.zeros(lstm_hidden_size,).type(dtype)
 
 		for batch_idx, (data, target) in enumerate(train_loader):
-			print("BATCH IDX: ", batch_idx)
-			# data, target = data.to(device), target.to(device)
-			# optimizer.zero_grad()
+			# print("BATCH IDX: ", batch_idx)
+			data, target = data.to(device), target.to(device)
+			optimizer.zero_grad()
 			# output = client_model(data)
 			# criterion = nn.CrossEntropyLoss()
 
 			# loss = F.nll_loss(output, target)
 			# loss = criterion(output, target)
 			loss = MSEcost(VQC = client_model, X = data, Y = target, h_0 = h_0, c_0 = c_0, seq_len = 4)
-			print("Loss: ", loss)
+			# print("Loss: ", loss)
 			loss.backward()
 			optimizer.step()
 	return loss.item()
@@ -233,9 +235,6 @@ def server_aggregate(global_model, client_models):
 	global_model.load_state_dict(global_dict)
 	for model in client_models:
 		model.load_state_dict(global_model.state_dict())
-
-
-
 
 
 def test(global_model, X, Y):
@@ -284,15 +283,12 @@ for i in range(num_selected):
 	client_models.append(client_qlstm)
 
 
-
 for model in client_models:
 	model.load_state_dict(global_model.state_dict()) 
 # opt = [optim.SGD(model.parameters(), lr=0.1) for model in client_models]
 
 # torch.optim.RMSprop(model.parameters(), lr=0.01, alpha=0.99, eps=1e-08, weight_decay=0, momentum=0, centered=False)
 opt = [torch.optim.RMSprop(model.parameters(), lr=0.01, alpha=0.99, eps=1e-08, weight_decay=0, momentum=0, centered=False) for model in client_models]
-
-
 
 
 exp_index = 2
@@ -316,7 +312,7 @@ for r in range(num_rounds):
 	client_idx = np.random.permutation(num_clients)[:num_selected]
 	# client update
 	loss = 0
-	for i in tqdm(range(num_selected)):
+	for i in tqdm(range(num_selected), ncols=100):
 		loss += client_update(client_models[i], opt[i], train_loader[client_idx[i]], epoch=epochs)
 	
 	losses_train.append((loss / num_selected))
@@ -331,7 +327,7 @@ for r in range(num_rounds):
 	total_res, ground_truth_y = simulation_test(VQC = global_model, X = x, Y = y, h_0 = h_0, c_0 = c_0)
 	
 	test_loss = test(global_model, x_test, y_test)
-	losses_test.append(test_loss.detach().numpy())
+	losses_test.append(test_loss.detach().cpu().numpy())
 	# acc_test.append(acc)
 	print('%d-th round' % r)
 	print('average train loss %0.3g | test loss %0.3g ' % (loss / num_selected, test_loss))
@@ -348,23 +344,3 @@ for r in range(num_rounds):
 		model = global_model, 
 		simulation_result = total_res, 
 		ground_truth = ground_truth_y)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

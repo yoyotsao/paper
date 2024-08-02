@@ -43,7 +43,7 @@ def accuracy(labels, predictions):
 def lost_function_cross_entropy(labels, predictions):
 	loss = nn.CrossEntropyLoss()
 	output = loss(predictions, labels)
-	print("LOSS AVG: ",output)
+	# print("LOSS AVG: ",output)
 	return output
 
 
@@ -55,7 +55,7 @@ def cost(VQC, X, Y):
 
 	loss = nn.CrossEntropyLoss()
 	output = loss(torch.stack([VQC.forward(item) for item in X]), Y)
-	print("LOSS AVG: ",output)
+	# print("LOSS AVG: ",output)
 	return output
 
 def MSEcost(VQC, X, Y):
@@ -65,7 +65,7 @@ def MSEcost(VQC, X, Y):
 
 	loss = nn.MSELoss()
 	output = loss(torch.stack([VQC.forward(item) for item in X]), Y)
-	print("LOSS AVG: ",output)
+	# print("LOSS AVG: ",output)
 	return output
 
 
@@ -75,7 +75,7 @@ def cost_function(VQC, LossFunction, X, Y):
 	# predictions = torch.stack([variational_classifier(var_Q_circuit = var_Q_circuit, var_Q_bias = var_Q_bias, angles=item) for item in X])
 	
 	output = LossFunction(torch.stack([VQC.forward(item) for item in X]), Y)
-	print("LOSS AVG: ",output)
+	# print("LOSS AVG: ",output)
 	return output
 
 

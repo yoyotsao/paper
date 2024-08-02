@@ -33,10 +33,10 @@ from metaquantum import Optimization
 
 # Qiskit
 import qiskit
-import qiskit.providers.aer.noise as noise
+import qiskit_aer.noise as noise
 
 # Custom qiskit noise model
-from ibm_noise_models import thermal_noise_backend, combined_error_noisy_backend, combined_noise_backend_normdist
+from ibm_noise_models import combined_noise_backend_normdist #thermal_noise_backend, combined_error_noisy_backend, 
 
 
 # Dataset
@@ -52,8 +52,13 @@ from data.bessel_functions import get_bessel_data
 
 ##
 # Device auto select
-# dtype = torch.cuda.DoubleTensor if torch.cuda.is_available() else torch.DoubleTensor
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# if torch.cuda.is_available():
+# 	device = 'cuda' 
+# 	torch.set_default_tensor_type(torch.cuda.FloatTensor)
+# 	dtype = torch.cuda.DoubleTensor
+# else:
+# 	device = 'cpu'
+# 	dtype = torch.DoubleTensor
 
 
 from lstm_base_class import VQLSTM
@@ -68,7 +73,7 @@ def MSEcost(VQC, X, Y, h_0, c_0, seq_len):
 
 	loss = nn.MSELoss()
 	output = loss(torch.stack([VQC.forward(vec.reshape(seq_len,1), h_0, c_0).reshape(1,) for vec in X]), Y.reshape(Y.shape[0],1))
-	print("LOSS AVG: ",output)
+	# print("LOSS AVG: ",output)
 	return output
 
 def train_epoch_full(opt, VQC, data, h_0, c_0, seq_len, batch_size):
@@ -157,7 +162,7 @@ def plotting_simulation(exp_name, exp_index, file_name, train_len, simulation_re
 def main():
 
 	dtype = torch.DoubleTensor
-	device = 'cpu'
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 	qdevice = "default.qubit" 
@@ -281,7 +286,7 @@ def main():
 			ground_truth_y = None
 			if device == 'cuda':
 				total_res = torch.stack([model.forward(vec.reshape(4,1), h_0, c_0).reshape(1,) for vec in x.type(dtype)]).detach().cpu().numpy()
-				ground_truth_y = y.clone().detach().cpu()
+				ground_truth_y = y.clone().detach()
 			else:
 				total_res = torch.stack([model.forward(vec.reshape(4,1), h_0, c_0).reshape(1,) for vec in x.type(dtype)]).detach().numpy()
 				ground_truth_y = y.clone().detach()
