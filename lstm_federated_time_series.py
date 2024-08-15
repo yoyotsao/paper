@@ -78,8 +78,8 @@ def simulation_test(VQC, X, Y, h_0, c_0):
 	return total_res, ground_truth_y
 
 
-num_clients = 100
-num_selected = 10 
+num_clients = 5
+num_selected = 5 
 num_rounds = 100
 epochs = 1   
 batch_size = 4
@@ -144,6 +144,27 @@ def saving(exp_name, exp_index, train_len, iteration_list, train_loss_list, test
 
 	return
 
+def saving_loss(exp_name, exp_index, train_len, iteration_list, train_loss_list, test_loss_list, model):
+	# Generate file name
+	file_name = exp_name + "_NO_" + str(exp_index) + "_Epoch_" + str(iteration_list[-1])
+
+	if not os.path.exists(exp_name):
+		os.makedirs(exp_name)
+
+	# Save the train loss list
+	with open(exp_name + "/" + file_name + "_TRAINING_LOST" + ".txt", "wb") as fp:
+		pickle.dump(train_loss_list, fp)
+
+	# Save the test loss list
+	with open(exp_name + "/" + file_name + "_TESTING_LOST" + ".txt", "wb") as fp:
+		pickle.dump(test_loss_list, fp)
+	# Save the model parameters
+	torch.save(model.state_dict(), exp_name + "/" +  file_name + "_torch_model.pth")
+
+	# Plot
+	plotting_data(exp_name, exp_index, file_name, iteration_list, train_loss_list, test_loss_list)
+
+	return
 
 def plotting_data(exp_name, exp_index, file_name, iteration_list, train_loss_list, test_loss_list):
 	# Plot train and test loss
@@ -246,6 +267,8 @@ def test(global_model, X, Y):
 
 	return test_loss
 
+def get_date_time():
+	return datetime.now().strftime('%Y%m%d_%H%M%S')
 
 global_model = VQLSTM(lstm_input_size = lstm_input_size, 
 	lstm_hidden_size = lstm_hidden_size,
@@ -292,12 +315,16 @@ opt = [torch.optim.RMSprop(model.parameters(), lr=0.01, alpha=0.99, eps=1e-08, w
 
 
 exp_index = 2
-folder_name = "FEDERATED_QLSTM_TS_MODEL_BESSEL_EXP_{}".format(exp_index)
-# exp_name = "FEDERATED_QLSTM_TS_MODEL_BESSEL"
+folder_name = f"FedQLSTM_BESSEL_{get_date_time()}"
 
 if not os.path.exists(folder_name):
 	os.makedirs(folder_name)
 
+with open(f"{folder_name}/parameter.txt", "w") as f:
+	f.write(f"num_clients = {num_clients}\n")
+	f.write(f"num_selected = {num_selected}\n")
+	f.write(f"epochs = {epochs}\n")
+	f.write(f"batch_size = {batch_size}\n")
 
 losses_train = []
 losses_test = []
@@ -307,6 +334,7 @@ epoch_list = []
 # Runnining FL
 
 for r in range(num_rounds):
+	print(get_date_time())
 	epoch_list.append(r + 1)
 	# select random clients
 	client_idx = np.random.permutation(num_clients)[:num_selected]
@@ -324,23 +352,32 @@ for r in range(num_rounds):
 	c_0 = torch.zeros(lstm_internal_size,).type(dtype)
 	h_0 = torch.zeros(lstm_hidden_size,).type(dtype)
 	
-	total_res, ground_truth_y = simulation_test(VQC = global_model, X = x, Y = y, h_0 = h_0, c_0 = c_0)
-	
 	test_loss = test(global_model, x_test, y_test)
 	losses_test.append(test_loss.detach().cpu().numpy())
 	# acc_test.append(acc)
 	print('%d-th round' % r)
 	print('average train loss %0.3g | test loss %0.3g ' % (loss / num_selected, test_loss))
-	
 
-
-	saving(
+	if (r+1)%10==0:
+		saving_loss(
 		exp_name = folder_name, 
 		exp_index = exp_index, 
 		train_len = train_len, 
 		iteration_list = epoch_list, 
 		train_loss_list = losses_train, 
 		test_loss_list = losses_test, 
-		model = global_model, 
-		simulation_result = total_res, 
-		ground_truth = ground_truth_y)
+		model = global_model)
+	
+
+total_res, ground_truth_y = simulation_test(VQC = global_model, X = x, Y = y, h_0 = h_0, c_0 = c_0)
+
+saving(
+	exp_name = folder_name, 
+	exp_index = exp_index, 
+	train_len = train_len, 
+	iteration_list = epoch_list, 
+	train_loss_list = losses_train, 
+	test_loss_list = losses_test, 
+	model = global_model, 
+	simulation_result = total_res, 
+	ground_truth = ground_truth_y)
